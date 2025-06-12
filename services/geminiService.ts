@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse, Content, Part, GroundingChunk } from "@google/genai";
 import { QuizQuestion } from '../types';
 
@@ -74,7 +73,7 @@ export const generateSummary = async (content: string | Part): Promise<string> =
 };
 
 export const generateExplanation = async (content: string | Part): Promise<string> => {
-  const prompt = "Explain the following lesson content in a clear and detailed manner, as if explaining to a student:";
+  const prompt = "Explain the following lesson content in a clear and detailed manner, as if explaining to a student, and provide the explanation in Arabic:";
   const result = await generateContentWithPrompt(prompt, content);
   return result.text;
 };
