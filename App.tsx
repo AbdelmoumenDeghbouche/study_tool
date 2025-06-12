@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { InputType, ActiveResultTab, QuizQuestion, GeneratedContent, LoadingStates } from './types';
 import { Part } from "@google/genai";
@@ -11,6 +10,7 @@ import ContentDisplayCard from './components/ContentDisplayCard';
 import QuizView from './components/QuizView';
 import ErrorMessage from './components/ErrorMessage';
 import LoadingSpinner from './components/LoadingSpinner';
+import LanguageSelector, { Language } from './components/LanguageSelector';
 
 // Helper to convert base64 Data URL to Gemini Part
 const fileToGenerativePart = (dataUrl: string, mimeType: string): Part => {
@@ -39,6 +39,7 @@ const App: React.FC = () => {
     generating: false, summary: false, explanation: false, quiz: false, mindMap: false,
   });
   const [error, setError] = useState<string | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>('en');
 
   const resetResults = () => {
     setGeneratedContent({ summary: '', explanation: '', quiz: [], mindMap: '' });
@@ -72,64 +73,72 @@ const App: React.FC = () => {
     }
   };
 
-  const processContent = useCallback(async () => {
-    setError(null);
-    let currentContent: string | Part | null = null;
-
-    if (inputType === 'image' && uploadedFile && imageUrl) {
-      currentContent = fileToGenerativePart(imageUrl, uploadedFile.type);
-    } else if (inputType === 'text' && inputText.trim()) {
-      currentContent = inputText.trim();
-    } else {
-      setError("Please upload an image or enter some text content.");
+  const handleGenerate = useCallback(async () => {
+    if (!inputText && !uploadedFile && !imageUrl) {
+      setError("Please enter some content first.");
       return;
     }
 
-    if (!currentContent) {
+    setError(null);
+    setGeneratedContent({ summary: '', explanation: '', quiz: [], mindMap: '' });
+    setLoadingStates({ generating: true, summary: true, explanation: true, quiz: true, mindMap: true });
+
+    try {
+      let currentContent: string | Part | null = null;
+
+      if (inputType === 'image' && uploadedFile && imageUrl) {
+        currentContent = fileToGenerativePart(imageUrl, uploadedFile.type);
+      } else if (inputType === 'text' && inputText.trim()) {
+        currentContent = inputText.trim();
+      } else {
         setError("No content provided to process.");
         return;
-    }
+      }
 
-    setLoadingStates({ generating: true, summary: true, explanation: true, quiz: true, mindMap: true });
-    resetResults();
+      if (!currentContent) {
+        setError("No content provided to process.");
+        return;
+      }
 
-    try {
-      const summary = await geminiService.generateSummary(currentContent);
-      setGeneratedContent(prev => ({ ...prev, summary }));
-    } catch (e: any) {
-      setError(prev => prev ? `${prev}\nSummary failed: ${e.message}` : `Summary failed: ${e.message}`);
-    } finally {
-      setLoadingStates(prev => ({ ...prev, summary: false }));
-    }
+      try {
+        const summary = await geminiService.generateSummary(currentContent, selectedLanguage);
+        setGeneratedContent(prev => ({ ...prev, summary }));
+      } catch (e: any) {
+        setError(prev => prev ? `${prev}\nSummary failed: ${e.message}` : `Summary failed: ${e.message}`);
+      } finally {
+        setLoadingStates(prev => ({ ...prev, summary: false }));
+      }
 
-    try {
-      const explanation = await geminiService.generateExplanation(currentContent);
-      setGeneratedContent(prev => ({ ...prev, explanation }));
-    } catch (e: any) {
-      setError(prev => prev ? `${prev}\nExplanation failed: ${e.message}` : `Explanation failed: ${e.message}`);
-    } finally {
-      setLoadingStates(prev => ({ ...prev, explanation: false }));
-    }
+      try {
+        const explanation = await geminiService.generateExplanation(currentContent, selectedLanguage);
+        setGeneratedContent(prev => ({ ...prev, explanation }));
+      } catch (e: any) {
+        setError(prev => prev ? `${prev}\nExplanation failed: ${e.message}` : `Explanation failed: ${e.message}`);
+      } finally {
+        setLoadingStates(prev => ({ ...prev, explanation: false }));
+      }
 
-    try {
-      const quiz = await geminiService.generateQuiz(currentContent);
-      setGeneratedContent(prev => ({ ...prev, quiz }));
-    } catch (e: any) {
-      setError(prev => prev ? `${prev}\nQuiz generation failed: ${e.message}` : `Quiz generation failed: ${e.message}`);
+      try {
+        const quiz = await geminiService.generateQuiz(currentContent, selectedLanguage);
+        setGeneratedContent(prev => ({ ...prev, quiz }));
+      } catch (e: any) {
+        setError(prev => prev ? `${prev}\nQuiz generation failed: ${e.message}` : `Quiz generation failed: ${e.message}`);
+      } finally {
+        setLoadingStates(prev => ({ ...prev, quiz: false }));
+      }
+      
+      try {
+        const mindMap = await geminiService.generateMindMap(currentContent, selectedLanguage);
+        setGeneratedContent(prev => ({ ...prev, mindMap }));
+      } catch (e: any) {
+        setError(prev => prev ? `${prev}\nMind map generation failed: ${e.message}` : `Mind map generation failed: ${e.message}`);
+      } finally {
+        setLoadingStates(prev => ({ ...prev, mindMap: false }));
+      }
     } finally {
-      setLoadingStates(prev => ({ ...prev, quiz: false }));
+      setLoadingStates(prev => ({ ...prev, generating: false }));
     }
-    
-    try {
-      const mindMap = await geminiService.generateMindMap(currentContent);
-      setGeneratedContent(prev => ({ ...prev, mindMap }));
-    } catch (e: any) {
-      setError(prev => prev ? `${prev}\nMind map generation failed: ${e.message}` : `Mind map generation failed: ${e.message}`);
-    } finally {
-      setLoadingStates(prev => ({ ...prev, mindMap: false }));
-    }
-    
-  }, [inputType, uploadedFile, imageUrl, inputText]);
+  }, [inputType, uploadedFile, imageUrl, inputText, selectedLanguage]);
 
   // Effect to turn off global generating loader when all parts are done
   useEffect(() => {
@@ -154,6 +163,10 @@ const App: React.FC = () => {
         </header>
 
         <section className="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10">
+          <LanguageSelector 
+            selectedLanguage={selectedLanguage}
+            onLanguageChange={setSelectedLanguage}
+          />
           <InputTabs activeInputType={inputType} onTabChange={handleInputTabChange} />
           {inputType === 'image' ? (
             <ImageUpload onImageChange={handleImageChange} currentImageUrl={imageUrl} />
@@ -161,7 +174,7 @@ const App: React.FC = () => {
             <TextInput text={inputText} onTextChange={handleTextChange} />
           )}
           <button
-            onClick={processContent}
+            onClick={handleGenerate}
             disabled={!canGenerate || loadingStates.generating}
             className="mt-6 w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors duration-150"
           >

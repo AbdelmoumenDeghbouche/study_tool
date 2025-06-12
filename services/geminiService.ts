@@ -1,5 +1,6 @@
 import { GoogleGenAI, GenerateContentResponse, Content, Part, GroundingChunk } from "@google/genai";
 import { QuizQuestion } from '../types';
+import { Language } from '../components/LanguageSelector';
 
 const API_KEY = process.env.API_KEY;
 
@@ -11,6 +12,15 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY! });
 const textModel = 'gemini-2.5-flash-preview-04-17';
+
+const getLanguagePrompt = (basePrompt: string, language: Language): string => {
+  const languageInstructions = {
+    en: "Provide the response in English.",
+    ar: "Provide the response in Arabic.",
+    es: "Provide the response in Spanish."
+  };
+  return `${basePrompt} ${languageInstructions[language]}`;
+};
 
 function parseJsonFromText(text: string): any {
   let jsonStr = text.trim();
@@ -30,7 +40,8 @@ function parseJsonFromText(text: string): any {
 const generateContentWithPrompt = async (
   prompt: string, 
   inputContent: string | Part,
-  isJsonOutput: boolean = false
+  isJsonOutput: boolean = false,
+  language: Language = 'en'
 ): Promise<{ text: string; groundingChunks?: GroundingChunk[] }> => {
   if (!API_KEY) throw new Error("API Key for Gemini not configured.");
 
@@ -38,10 +49,9 @@ const generateContentWithPrompt = async (
   if (typeof inputContent === 'string') {
     contents[0].parts.push({ text: inputContent });
   } else {
-    contents[0].parts.push(inputContent); // Assumes inputContent is a Part object (e.g., for image)
+    contents[0].parts.push(inputContent);
   }
-   contents[0].parts.push({text: prompt});
-
+  contents[0].parts.push({ text: getLanguagePrompt(prompt, language) });
 
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
@@ -59,26 +69,25 @@ const generateContentWithPrompt = async (
   } catch (error) {
     console.error("Gemini API call failed:", error);
     if (error instanceof Error) {
-        throw new Error(`Gemini API error: ${error.message}`);
+      throw new Error(`Gemini API error: ${error.message}`);
     }
     throw new Error("An unknown error occurred with the Gemini API.");
   }
 };
 
-
-export const generateSummary = async (content: string | Part): Promise<string> => {
+export const generateSummary = async (content: string | Part, language: Language = 'en'): Promise<string> => {
   const prompt = "Summarize the following lesson content concisely:";
-  const result = await generateContentWithPrompt(prompt, content);
+  const result = await generateContentWithPrompt(prompt, content, false, language);
   return result.text;
 };
 
-export const generateExplanation = async (content: string | Part): Promise<string> => {
-  const prompt = "Explain the following lesson content in a clear and detailed manner, as if explaining to a student, and provide the explanation in Arabic:";
-  const result = await generateContentWithPrompt(prompt, content);
+export const generateExplanation = async (content: string | Part, language: Language = 'en'): Promise<string> => {
+  const prompt = "Explain the following lesson content in a clear and detailed manner, as if explaining to a student:";
+  const result = await generateContentWithPrompt(prompt, content, false, language);
   return result.text;
 };
 
-export const generateQuiz = async (content: string | Part): Promise<QuizQuestion[]> => {
+export const generateQuiz = async (content: string | Part, language: Language = 'en'): Promise<QuizQuestion[]> => {
   const prompt = `Based on the following lesson content, generate a quiz. 
 The quiz should consist of 3-5 multiple-choice questions. 
 For each question, provide:
@@ -94,7 +103,7 @@ Format the entire output as a single JSON array of objects. Example:
     "correctAnswer": "Energy production (ATP)"
   }
 ]`;
-  const result = await generateContentWithPrompt(prompt, content, true);
+  const result = await generateContentWithPrompt(prompt, content, true, language);
   try {
     const parsedQuiz = parseJsonFromText(result.text);
     if (Array.isArray(parsedQuiz)) {
@@ -107,16 +116,16 @@ Format the entire output as a single JSON array of objects. Example:
     console.error("Parsed quiz is not an array:", parsedQuiz);
     throw new Error("Quiz data is not in the expected array format.");
   } catch (error) {
-     console.error("Error processing quiz data:", error);
-     throw error; // Re-throw to be caught by the caller
+    console.error("Error processing quiz data:", error);
+    throw error;
   }
 };
 
-export const generateMindMap = async (content: string | Part): Promise<string> => {
+export const generateMindMap = async (content: string | Part, language: Language = 'en'): Promise<string> => {
   const prompt = `Generate a text-based mind map for the following lesson content. 
 Outline key concepts and their relationships hierarchically. 
 Use indentation (e.g., tabs or spaces) or bullet points (e.g., -, *, +) to represent the structure. 
 The main topic should be at the top level. Sub-topics and details should be nested underneath.`;
-  const result = await generateContentWithPrompt(prompt, content);
+  const result = await generateContentWithPrompt(prompt, content, false, language);
   return result.text;
 };
